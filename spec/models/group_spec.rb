@@ -159,7 +159,7 @@ describe Group do
   describe '.refresh_automatic_group!' do
     it "makes sure the everyone group is not visible" do
       g = Group.refresh_automatic_group!(:everyone)
-      expect(g.visible).to eq(false)
+      expect(g.visibility_level).to eq(Group.visibility_level[:admin])
     end
 
     it "uses the localized name if name has not been taken" do
@@ -411,8 +411,8 @@ describe Group do
   end
 
   describe ".visible_groups" do
-    let(:group) { Fabricate(:group, visible: false) }
-    let(:group_2) { Fabricate(:group, visible: true) }
+    let(:group) { Fabricate(:group, visibility_level: Group.visibility_level[:admin]) }
+    let(:group_2) { Fabricate(:group, visibility_level: Group.visibility_level[:public]) }
     let(:admin) { Fabricate(:admin) }
     let(:user) { Fabricate(:user) }
 
@@ -433,7 +433,7 @@ describe Group do
         group.add_owner(user)
 
         expect(Group.visible_groups(user).pluck(:id).sort)
-          .to eq([group.id, group_2.id])
+          .to eq((Group::AUTO_GROUP_IDS.keys + [group.id, group_2.id]).sort)
       end
     end
 

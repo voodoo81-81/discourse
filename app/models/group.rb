@@ -61,17 +61,41 @@ class Group < ActiveRecord::Base
     :everyone => 99
   }
 
+  def self.visibility_level
+    @visibility_level ||= Enum.new(
+      public: 0,
+      group: 1,
+      staff: 2,
+      admin: 3
+    )
+  end
+
   validates :alias_level, inclusion: { in: ALIAS_LEVELS.values}
 
   scope :visible_groups, ->(user) {
     groups = Group.order(name: :asc).where("groups.id > 0")
 
-    if !user || !user.admin
-      owner_group_ids = GroupUser.where(user: user, owner: true).pluck(:group_id)
+    if !user
 
-      groups = groups.where("
-        (groups.automatic = false AND groups.visible = true) OR groups.id IN (?)
-      ", owner_group_ids)
+      groups = groups.where(visibility_level: Group.visibility_level[:public])
+
+    elsif !user.admin
+
+      where = <<SQL
+  (groups.visibility_level = :public) OR
+  (groups.visibility_level = :staff AND :is_staff = 1) OR
+  (groups.visibility_level = :group AND groups.id IN
+    ( SELECT group_id FROM group_users WHERE user_id = :user_id AND NOT owner )
+  ) OR groups.id IN ( SELECT group_id FROM group_users WHERE user_id = :user_id AND owner )
+SQL
+
+      groups = groups.where(where,
+                            public: Group.visibility_level[:public],
+                            group: Group.visibility_level[:group],
+                            staff: Group.visibility_level[:staff],
+                            is_staff: user.staff? ? 1 : 0,
+                            user_id: user.id)
+
     end
 
     groups
@@ -190,7 +214,7 @@ class Group < ActiveRecord::Base
     # the everyone group is special, it can include non-users so there is no
     # way to have the membership in a table
     if name == :everyone
-      group.visible = false
+      group.visibility_level = Group.visibility_level[:admin]
       group.save!
       return group
     end
